@@ -74,7 +74,7 @@ click==8.5.0 \
     --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360 \
     --hash=sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34
     # via mkdocs
-coverage==7.17.1 \
+coverage[toml]==7.17.1 \
     --hash=sha256:006453b2515ea4c44a857e07b985429038b164080fa777cabea6d22d2e686325 \
     --hash=sha256:0411fe8b17b7f481cdfe9138bd5b266bb18de124114cfab0cf796b61383ef321 \
     --hash=sha256:042e093be797b929741fb71238da028f0f2d9d669a3a7ab3588967d77f860b51 \
@@ -624,9 +624,9 @@ pathspec==1.1.1 \
     #   hatchling
     #   mkdocs
     #   mypy
-platformdirs==4.14.3 \
-    --hash=sha256:021add1ab113483edbcd4694f5fbb2d688b893ea30d35e1155bb371cf4be0be8 \
-    --hash=sha256:cba2d05fe5e18b26b1fa6f376b8e6234c012abe1f8696c486fface7d0054e931
+platformdirs==4.14.4 \
+    --hash=sha256:89c1bfa30434b2dcc08655bcfb1789e1a6f97602c11ff990615d09a4b823d6be \
+    --hash=sha256:edb4a4aea570d69eb83e6b0973b588bbf868fb0dde2894106d6667739f017751
     # via mkdocs-get-deps
 pluggy==1.7.0 \
     --hash=sha256:7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec \
@@ -768,9 +768,9 @@ six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
     # via markdownify
-soupsieve==2.10 \
-    --hash=sha256:49e9380d7d2905463583bafe285e818c7366a9ed7b3aee221c1ac79c905d8bc0 \
-    --hash=sha256:8596eb8967d744174820280fa62b4542a2e955bfaccca73ed8a13c6eb8e9b502
+soupsieve==4.0 \
+    --hash=sha256:5e7494bfce90e06676cfb4c5c2cf22243e98e5cf24646bb1ecdda46d318550a0 \
+    --hash=sha256:ccd6470b256394ac44b08b86fd94b30a17d335a5335c8a3d15565f7b03d3c8cf
     # via beautifulsoup4
 tomlkit==0.15.2 \
     --hash=sha256:05562412163a3037b94497385fb7f9204c637bc605af7a48199e41cf2272f437 \
