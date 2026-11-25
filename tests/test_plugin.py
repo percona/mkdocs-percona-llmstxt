@@ -391,6 +391,26 @@ def test_llms_txt_entries_get_a_description(tmp_path: Path) -> None:
     assert "- [Release 1.0](https://docs.example.com/product/notes/1.0.md): First.\n" not in index  # too short
 
 
+def test_repeated_first_paragraphs_are_not_descriptions(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    docs = tmp_path / "docs"
+    boiler = "# T\n\nGet started with the quickstart guide.\n"
+    for name in ("index.md", "install.md", "notes/1.0.md"):
+        (docs / name).write_text(boiler, encoding="utf-8")
+    (docs / "draft.md").write_text("# Draft\n\nA paragraph that is shared.\n", encoding="utf-8")
+    index = read(run_build(config_file) / "llms.txt")
+    assert "quickstart" not in index
+    assert "draft.md): A paragraph that is shared." in index
+
+
+def test_repeated_front_matter_descriptions_are_kept(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    docs = tmp_path / "docs"
+    for name in ("index.md", "install.md", "notes/1.0.md"):
+        (docs / name).write_text("---\ndescription: Chosen by the author.\n---\n# T\n", encoding="utf-8")
+    assert read(run_build(config_file) / "llms.txt").count(": Chosen by the author.") == 3
+
+
 def test_descriptions_can_be_turned_off(tmp_path: Path) -> None:
     config_file = make_site(tmp_path, percona="  - percona-llmstxt:\n      descriptions: false\n")
     (tmp_path / "docs" / "install.md").write_text("# Install\n\nInstall the package with apt.\n", encoding="utf-8")

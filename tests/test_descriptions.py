@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from percona_llmstxt.descriptions import MAX_LENGTH, pick_description, shorten
+from percona_llmstxt.descriptions import MAX_LENGTH, drop_repeated, pick_description, shorten
 
 
 def test_meta_description_wins() -> None:
@@ -77,3 +77,39 @@ def test_shorten_cuts_a_long_sentence_at_a_word_boundary() -> None:
 
 def test_shorten_cuts_a_long_unbroken_string_at_the_limit() -> None:
     assert shorten("x" * 300) == "x" * MAX_LENGTH + "…"
+
+
+def test_space_before_punctuation_and_after_opening_bracket_is_removed() -> None:
+    html = '<p>Percona <a href="x">Support</a> is here to <strong>help</strong> .</p>'
+    assert pick_description({}, html) == "Percona Support is here to help."
+    assert (
+        pick_description({}, "<p>Call ( now ) , then wait ; ok : yes ! no ?</p>")
+        == "Call (now), then wait; ok: yes! no?"
+    )
+    assert pick_description({}, '<p>Percona <a href="x">Support</a> is here to <strong>help</strong>.</p>') == (
+        "Percona Support is here to help."
+    )
+
+
+def test_a_description_on_three_pages_is_dropped_unless_authored() -> None:
+    found = {
+        "a": "Same text on pages.",
+        "b": "Same text on pages.",
+        "c": "Same text on pages.",
+        "d": "Unique text here.",
+    }
+    assert drop_repeated(found, authored=set()) == {"d": "Unique text here."}
+
+
+def test_a_description_on_two_pages_is_kept() -> None:
+    found = {"a": "Shared by a pair.", "b": "Shared by a pair."}
+    assert drop_repeated(found, authored=set()) == found
+
+
+def test_authored_descriptions_are_kept_even_when_repeated() -> None:
+    found = {"a": "Chosen by hand.", "b": "Chosen by hand.", "c": "Chosen by hand.", "d": "Chosen by hand."}
+    assert drop_repeated(found, authored={"a", "b", "c"}) == {
+        "a": "Chosen by hand.",
+        "b": "Chosen by hand.",
+        "c": "Chosen by hand.",
+    }

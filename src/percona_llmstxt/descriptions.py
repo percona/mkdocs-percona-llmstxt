@@ -6,7 +6,9 @@ question without opening each one. A line of text after the link lets it choose.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import re
+from collections import Counter
+from collections.abc import Collection, Mapping
 from typing import Any
 
 from bs4 import BeautifulSoup, Tag
@@ -14,11 +16,18 @@ from bs4 import BeautifulSoup, Tag
 MAX_LENGTH = 200
 MIN_LENGTH = 15  # shorter text ("Overview.") says nothing the title does not
 ELLIPSIS = "…"
-SENTENCE_END = (". ", "? ", "! ")
+REPEATED = 3  # a description on this many pages is boilerplate, not about any one of them
+_SPACE_BEFORE = re.compile(r"\s+(?=[.,;:!?)])")
+_SPACE_AFTER = re.compile(r"(?<=\()\s+")
 
 
 def _collapse(text: str) -> str:
     return " ".join(text.split())
+
+
+def _tidy(text: str) -> str:
+    """Collapse whitespace and close the gaps that joining inline tags leaves around punctuation."""
+    return _SPACE_AFTER.sub("", _SPACE_BEFORE.sub("", _collapse(text)))
 
 
 def _cut(text: str) -> str:
@@ -53,7 +62,7 @@ def first_paragraph(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
     for child in soup.find_all(recursive=False):
         if isinstance(child, Tag) and child.name == "p":
-            return _collapse(child.get_text())
+            return _tidy(child.get_text())
     return ""
 
 
@@ -64,9 +73,23 @@ def pick_description(meta: Mapping[str, Any], html: str) -> str | None:
     purpose, so it wins; it is only cut when it is too long. Otherwise the
     first sentence of the first paragraph is used.
     """
-    meta_description = meta.get("description")
-    if isinstance(meta_description, str) and (text := _collapse(meta_description)):
-        description = _cut(text)
-    else:
-        description = shorten(first_paragraph(html))
+    description = meta_description(meta) or shorten(first_paragraph(html))
     return description if len(description) >= MIN_LENGTH else None
+
+
+def meta_description(meta: Mapping[str, Any]) -> str | None:
+    """The ``description`` of the front matter, tidied and cut, or ``None`` if there is none."""
+    value = meta.get("description")
+    if isinstance(value, str) and (text := _collapse(value)):
+        return _cut(text)
+    return None
+
+
+def drop_repeated(found: Mapping[str, str], authored: Collection[str]) -> dict[str, str]:
+    """Leave out descriptions that ``REPEATED`` or more pages share, such as a boilerplate first line.
+
+    Such a line says nothing about any one page. The keys in ``authored`` have
+    a description an author chose in the front matter, and are always kept.
+    """
+    counts = Counter(found.values())
+    return {key: text for key, text in found.items() if key in authored or counts[text] < REPEATED}
