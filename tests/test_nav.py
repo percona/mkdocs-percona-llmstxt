@@ -110,3 +110,19 @@ def test_move_to_optional_without_matches_only_adds_the_other_pages() -> None:
 
 def test_move_to_optional_never_moves_the_target_into_itself() -> None:
     assert move_to_optional({"Optional": ["o.md"]}, ["optional"], "Optional", []) == {"Optional": ["o.md"]}
+
+
+def test_qualified_titles_accept_titles_yaml_reads_as_numbers() -> None:
+    nav: list[Any] = [{"Guide": [{1.0: "a.md"}, {2: [{"Sub": "b.md"}]}]}]
+    assert qualified_titles(nav) == {"b.md": "2: Sub"}
+
+
+def test_qualified_titles_prefix_the_named_sections() -> None:
+    nav: list[Any] = [
+        {"Release notes": [{"1.0": "r1.md"}, {"Series": [{"2.0": "r2.md"}]}, "bare.md"]},
+        {"Guide": [{"Install": "i.md"}]},
+    ]
+    assert qualified_titles(nav, prefixed=["release NOTES"]) == {
+        "r1.md": "Release notes: 1.0",
+        "r2.md": "Release notes: Series: 2.0",
+    }

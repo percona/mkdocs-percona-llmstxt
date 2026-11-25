@@ -91,7 +91,7 @@ def test_space_before_punctuation_and_after_opening_bracket_is_removed() -> None
     )
 
 
-def test_a_description_on_three_pages_is_dropped_unless_authored() -> None:
+def test_a_description_on_three_pages_is_dropped() -> None:
     found = {
         "a": "Same text on pages.",
         "b": "Same text on pages.",
@@ -109,3 +109,24 @@ def test_a_description_on_two_pages_is_kept() -> None:
 def test_front_matter_descriptions_are_tidied_too() -> None:
     meta = {"description": "Download from <b>Percona Downloads</b> .\n If needed ( see docs ) ask."}
     assert pick_description(meta, "") == "Download from <b>Percona Downloads</b>. If needed (see docs) ask."
+
+
+@pytest.mark.parametrize(
+    ("html", "expected"),
+    [
+        ("<p>Edit the <code>.my.cnf</code> file now.</p>", "Edit the .my.cnf file now."),
+        (
+            "<p>Files contain .ibd and .delta files, plus the :latest tag.</p>",
+            "Files contain .ibd and .delta files, plus the :latest tag.",
+        ),
+        ("<p>The option is on (on by default) for all.</p>", "The option is on (on by default) for all."),
+        ("<p>It is fixed (see <a>the docs</a> ).</p>", "It is fixed (see the docs)."),
+        ("<p>Percona <a>Support</a> is here to <b>help</b> .</p>", "Percona Support is here to help."),
+    ],
+)
+def test_tidying_only_closes_gaps_before_punctuation_that_ends_a_word(html: str, expected: str) -> None:
+    assert pick_description({}, html) == expected
+
+
+def test_front_matter_description_is_unescaped() -> None:
+    assert pick_description({"description": "Use &lt;AUDIT&gt; &amp; more."}, "") == "Use <AUDIT> & more."

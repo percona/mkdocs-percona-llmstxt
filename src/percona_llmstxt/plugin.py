@@ -202,7 +202,9 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
             return files
         llmstxt: BasePlugin[Any] = config.plugins[LLMSTXT]
         sections = llmstxt.config.sections
+        moved: list[str] = []  # the nav sections that go under other_pages
         if self.sections_from_nav and (name := self.config.other_pages):
+            moved = [title for title in self.config.optional_sections if title.casefold() != name.casefold()]
             pages = [file.src_uri for file in files.documentation_pages()]
             others = pages_outside_nav(pages, sections)
             sections = move_to_optional(sections, self.config.optional_sections, name, others)
@@ -215,7 +217,7 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         }
         self.md_pages = list(md_files.values())
         self.md_urls = {src: urljoin(llmstxt.config.base_url, dest) for src, dest in md_files.items()}
-        labels = qualified_titles(config.nav or [])
+        labels = qualified_titles(config.nav or [], moved)
         self.llms_titles = {self.md_urls[src]: label for src, label in labels.items() if src in self.md_urls}
         preprocess.configure(config.site_dir, frozenset(self.md_pages))
         return files

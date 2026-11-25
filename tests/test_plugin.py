@@ -336,7 +336,7 @@ def test_optional_sections_are_matched_ignoring_case(tmp_path: Path) -> None:
     assert "## Guide" not in index
     assert "## Release notes\n\n- [Release 1.0]" in index
     assert index.rstrip().endswith(
-        "- [Install](https://docs.example.com/product/install.md)\n- [Draft](https://docs.example.com/product/draft.md)"
+        "- [Guide: Install](https://docs.example.com/product/install.md)\n- [Draft](https://docs.example.com/product/draft.md)"
     )
 
 
@@ -364,13 +364,13 @@ def test_nothing_moves_without_an_other_pages_section(tmp_path: Path) -> None:
     assert "## Optional" not in index
 
 
-def test_optional_keeps_qualified_labels(tmp_path: Path) -> None:
+def test_moved_pages_keep_their_section_name_in_the_label(tmp_path: Path) -> None:
     config_file = nested_site(tmp_path)
-    config_file.write_text(
-        read(config_file).replace("  - Guide:", "  - Release notes:").replace("Audit Log Filter", "Series 1")
-    )
+    text = read(config_file).replace("  - Guide:", "  - Release notes:").replace("Audit Log Filter", "Series 1")
+    config_file.write_text(text.replace("      - Notes: notes/1.0.md", "      - 1.0: notes/1.0.md"), encoding="utf-8")
     index = read(run_build(config_file) / "llms.txt")
-    assert "## Optional\n\n- [Series 1: Install](https://docs.example.com/product/install.md)" in index
+    assert "- [Release notes: Series 1: Install](https://docs.example.com/product/install.md)" in index
+    assert "- [Release notes: 1.0](https://docs.example.com/product/notes/1.0.md)" in index
 
 
 # --- descriptions -----------------------------------------------------------

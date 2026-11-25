@@ -6,6 +6,7 @@ question without opening each one. A line of text after the link lets it choose.
 
 from __future__ import annotations
 
+import html
 import re
 from collections import Counter
 from collections.abc import Mapping
@@ -17,7 +18,7 @@ MAX_LENGTH = 200
 MIN_LENGTH = 15  # shorter text ("Overview.") says nothing the title does not
 ELLIPSIS = "…"
 REPEATED = 3  # a description on this many pages is boilerplate, not about any one of them
-_SPACE_BEFORE = re.compile(r"\s+(?=[.,;:!?)])")
+_SPACE_BEFORE = re.compile(r"\s+(?=[.,;:!?)]+(?:\s|$))")  # only punctuation that ends a word: not ".my.cnf"
 _SPACE_AFTER = re.compile(r"(?<=\()\s+")
 
 
@@ -77,9 +78,12 @@ def pick_description(meta: Mapping[str, Any], html: str) -> str | None:
 
 
 def meta_description(meta: Mapping[str, Any]) -> str | None:
-    """The ``description`` of the front matter, tidied and cut, or ``None`` if there is none."""
+    """The ``description`` of the front matter, tidied and cut, or ``None`` if there is none.
+
+    Plugins that fill it in store it HTML-escaped (``&lt;``), which would read as noise in llms.txt.
+    """
     value = meta.get("description")
-    if isinstance(value, str) and (text := _tidy(value)):
+    if isinstance(value, str) and (text := _tidy(html.unescape(value))):
         return _cut(text)
     return None
 
