@@ -130,8 +130,11 @@ def test_build_without_settings(tmp_path: Path) -> None:
     index = read(site / "llms.txt")
     assert "## Overview\n\n- [Home](https://docs.example.com/product/index.md)" in index
     assert "## Guide\n\n- [Install](https://docs.example.com/product/install.md)" in index
-    assert "## Release notes\n\n- [Release 1.0](https://docs.example.com/product/notes/1.0.md)" in index
-    assert index.rstrip().endswith("## Optional\n\n- [Draft](https://docs.example.com/product/draft.md)")
+    assert "## Release notes" not in index
+    assert index.rstrip().endswith(
+        "## Optional\n\n- [Release 1.0](https://docs.example.com/product/notes/1.0.md)"
+        "\n- [Draft](https://docs.example.com/product/draft.md)"
+    )
     assert "Archive" not in index
 
     for page in ("index.md", "install.md", "notes/1.0.md", "draft.md"):
@@ -185,7 +188,7 @@ def test_pages_outside_nav_can_be_left_out(tmp_path: Path) -> None:
 
 
 def test_no_optional_section_when_every_page_is_in_nav(tmp_path: Path) -> None:
-    config_file = make_site(tmp_path)
+    config_file = make_site(tmp_path, percona="  - percona-llmstxt:\n      optional_sections: []\n")
     (tmp_path / "docs" / "draft.md").unlink()
     assert "## Optional" not in read(run_build(config_file) / "llms.txt")
 
@@ -199,7 +202,9 @@ def test_a_nav_group_with_the_same_name_keeps_its_pages(tmp_path: Path) -> None:
 
 def test_other_pages_section_name(tmp_path: Path) -> None:
     site = run_build(make_site(tmp_path, percona="  - percona-llmstxt:\n      other_pages: More pages\n"))
-    assert "## More pages\n\n- [Draft]" in read(site / "llms.txt")
+    assert "## More pages\n\n- [Release 1.0](https://docs.example.com/product/notes/1.0.md)\n- [Draft]" in read(
+        site / "llms.txt"
+    )
 
 
 def test_first_section_name(tmp_path: Path) -> None:
@@ -311,6 +316,61 @@ def test_html_md_inactive_without_site_url(tmp_path: Path) -> None:
     config_file = make_site(tmp_path)
     config_file.write_text(read(config_file).replace(f"site_url: {SITE_URL}\n", ""), encoding="utf-8")
     assert not list(run_build(config_file).rglob("*.html.md"))
+
+
+# --- optional sections -------------------------------------------------------
+
+
+def test_release_notes_move_under_optional(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path))
+    index = read(site / "llms.txt")
+    sections = [line for line in index.splitlines() if line.startswith("## ")]
+    assert sections == ["## Overview", "## Guide", "## Optional"]
+    assert (site / "notes" / "1.0.md").is_file()  # still has its markdown copy
+    assert (site / "notes" / "1.0.html.md").is_file()
+
+
+def test_optional_sections_are_matched_ignoring_case(tmp_path: Path) -> None:
+    percona = "  - percona-llmstxt:\n      optional_sections: [GUIDE]\n"
+    index = read(run_build(make_site(tmp_path, percona=percona)) / "llms.txt")
+    assert "## Guide" not in index
+    assert "## Release notes\n\n- [Release 1.0]" in index
+    assert index.rstrip().endswith(
+        "- [Install](https://docs.example.com/product/install.md)\n- [Draft](https://docs.example.com/product/draft.md)"
+    )
+
+
+def test_no_optional_sections_keeps_the_old_layout(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path, percona="  - percona-llmstxt:\n      optional_sections: []\n"))
+    index = read(site / "llms.txt")
+    assert "## Release notes\n\n- [Release 1.0](https://docs.example.com/product/notes/1.0.md)" in index
+    assert index.rstrip().endswith("## Optional\n\n- [Draft](https://docs.example.com/product/draft.md)")
+
+
+def test_explicit_sections_are_not_reordered(tmp_path: Path) -> None:
+    llmstxt = (
+        "  - llmstxt:\n      sections:\n        Release notes:\n          - notes/1.0.md\n"
+        "        Guide:\n          - install.md\n"
+    )
+    index = read(run_build(make_site(tmp_path, llmstxt=llmstxt)) / "llms.txt")
+    assert index.index("## Release notes") < index.index("## Guide")
+    assert "## Optional" not in index
+
+
+def test_nothing_moves_without_an_other_pages_section(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path, percona="  - percona-llmstxt:\n      other_pages: ''\n"))
+    index = read(site / "llms.txt")
+    assert "## Release notes\n\n- [Release 1.0]" in index
+    assert "## Optional" not in index
+
+
+def test_optional_keeps_qualified_labels(tmp_path: Path) -> None:
+    config_file = nested_site(tmp_path)
+    config_file.write_text(
+        read(config_file).replace("  - Guide:", "  - Release notes:").replace("Audit Log Filter", "Series 1")
+    )
+    index = read(run_build(config_file) / "llms.txt")
+    assert "## Optional\n\n- [Series 1: Install](https://docs.example.com/product/install.md)" in index
 
 
 # --- descriptions -----------------------------------------------------------

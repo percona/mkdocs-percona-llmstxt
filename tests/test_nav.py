@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from percona_llmstxt.nav import nav_pages, pages_outside_nav, qualified_titles, sections_from_nav
+from percona_llmstxt.nav import move_to_optional, nav_pages, pages_outside_nav, qualified_titles, sections_from_nav
 
 
 @pytest.mark.parametrize(
@@ -91,3 +91,22 @@ def test_qualified_titles_nest_and_skip_unqualified_entries() -> None:
         "alf-install.md": "Audit Log Filter: Install",
         "f.md": "Audit Log Filter: Formats: Overview",
     }
+
+
+def test_move_to_optional_puts_matching_sections_last_in_order() -> None:
+    sections = {"Overview": ["a.md"], "Release notes": ["r1.md", "r2.md"], "Reference": ["b.md"], "Optional": ["o.md"]}
+    assert move_to_optional(sections, ["release NOTES"], "Optional", ["x.md"]) == {
+        "Overview": ["a.md"],
+        "Reference": ["b.md"],
+        "Optional": ["o.md", "r1.md", "r2.md", "x.md"],
+    }
+
+
+def test_move_to_optional_without_matches_only_adds_the_other_pages() -> None:
+    sections = {"Overview": ["a.md"]}
+    assert move_to_optional(sections, ["Release notes"], "Optional", []) == sections
+    assert move_to_optional(sections, [], "Optional", ["x.md"]) == {"Overview": ["a.md"], "Optional": ["x.md"]}
+
+
+def test_move_to_optional_never_moves_the_target_into_itself() -> None:
+    assert move_to_optional({"Optional": ["o.md"]}, ["optional"], "Optional", []) == {"Optional": ["o.md"]}

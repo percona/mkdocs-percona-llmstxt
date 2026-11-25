@@ -40,7 +40,7 @@ from mkdocs.structure.pages import Page
 from percona_llmstxt import preprocess
 from percona_llmstxt.descriptions import pick_description
 from percona_llmstxt.html import add_alternate, add_hint, mark_human_only
-from percona_llmstxt.nav import pages_outside_nav, qualified_titles, sections_from_nav
+from percona_llmstxt.nav import move_to_optional, pages_outside_nav, qualified_titles, sections_from_nav
 
 LLMSTXT = "llmstxt"
 HIGHLIGHT = "pymdownx.highlight"
@@ -64,6 +64,12 @@ class PerconaLlmsTxtConfig(Config):  # type: ignore[no-untyped-call]  # MkDocs: 
 
     hint = opts.Type(bool, default=True)
     """Add the hidden link to llms.txt to every HTML page."""
+
+    optional_sections = opts.ListOfItems(opts.Type(str), default=["Release notes"])
+    """Sections of the nav that move to the ``other_pages`` section, matched ignoring case.
+
+    Needs ``other_pages``; has no effect when the sections are set by hand.
+    """
 
     descriptions = opts.Type(bool, default=True)
     """Add a one-line description to each llms.txt entry that has none."""
@@ -198,9 +204,9 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         sections = llmstxt.config.sections
         if self.sections_from_nav and (name := self.config.other_pages):
             pages = [file.src_uri for file in files.documentation_pages()]
-            if others := pages_outside_nav(pages, sections):
-                sections = {**sections, name: [*sections.get(name, []), *others]}
-                llmstxt.config.sections = sections
+            others = pages_outside_nav(pages, sections)
+            sections = move_to_optional(sections, self.config.optional_sections, name, others)
+            llmstxt.config.sections = sections
         wanted = {page for pages in sections.values() for page in pages}
         md_files = {
             file.src_uri: Path(file.dest_uri).with_suffix(".md").as_posix()
