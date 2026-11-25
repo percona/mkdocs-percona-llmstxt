@@ -403,12 +403,15 @@ def test_repeated_first_paragraphs_are_not_descriptions(tmp_path: Path) -> None:
     assert "draft.md): A paragraph that is shared." in index
 
 
-def test_repeated_front_matter_descriptions_are_kept(tmp_path: Path) -> None:
+def test_repeated_front_matter_descriptions_are_dropped_too(tmp_path: Path) -> None:
     config_file = make_site(tmp_path)
     docs = tmp_path / "docs"
     for name in ("index.md", "install.md", "notes/1.0.md"):
-        (docs / name).write_text("---\ndescription: Chosen by the author.\n---\n# T\n", encoding="utf-8")
-    assert read(run_build(config_file) / "llms.txt").count(": Chosen by the author.") == 3
+        (docs / name).write_text("---\ndescription: Same for all pages .\n---\n# T\n", encoding="utf-8")
+    (docs / "draft.md").write_text("---\ndescription: Only for the draft .\n---\n# T\n", encoding="utf-8")
+    index = read(run_build(config_file) / "llms.txt")
+    assert "Same for all" not in index
+    assert "draft.md): Only for the draft." in index
 
 
 def test_descriptions_can_be_turned_off(tmp_path: Path) -> None:

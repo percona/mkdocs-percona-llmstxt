@@ -38,7 +38,7 @@ from mkdocs.structure.files import Files
 from mkdocs.structure.pages import Page
 
 from percona_llmstxt import preprocess
-from percona_llmstxt.descriptions import drop_repeated, meta_description, pick_description
+from percona_llmstxt.descriptions import drop_repeated, pick_description
 from percona_llmstxt.html import add_alternate, add_hint, mark_human_only
 from percona_llmstxt.nav import move_to_optional, pages_outside_nav, qualified_titles, sections_from_nav
 
@@ -164,7 +164,6 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         self.md_urls: dict[str, str] = {}
         self.llms_titles: dict[str, str] = {}
         self.descriptions: dict[str, str] = {}
-        self.authored: set[str] = set()  # md urls whose description is from the front matter
         self.sections_from_nav = False
 
     @event_priority(50)  # before the llmstxt plugin reads its settings
@@ -226,8 +225,6 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         md_url = self.md_urls.get(page.file.src_uri)
         if self.active and self.config.descriptions and md_url and (description := pick_description(page.meta, html)):
             self.descriptions[md_url] = description
-            if meta_description(page.meta):
-                self.authored.add(md_url)
         return None
 
     def on_post_page(self, output: str, *, page: Page, config: MkDocsConfig) -> str:
@@ -264,5 +261,5 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         first, newline, rest = text.partition("\n")
         text = versioned_title(first, os.environ.get(MIKE_VERSION)) + newline + rest
         if qualify:
-            text = qualify_entries(text, self.llms_titles, drop_repeated(self.descriptions, self.authored))
+            text = qualify_entries(text, self.llms_titles, drop_repeated(self.descriptions))
         path.write_text(text, encoding="utf-8")

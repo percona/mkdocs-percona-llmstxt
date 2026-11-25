@@ -98,18 +98,14 @@ def test_a_description_on_three_pages_is_dropped_unless_authored() -> None:
         "c": "Same text on pages.",
         "d": "Unique text here.",
     }
-    assert drop_repeated(found, authored=set()) == {"d": "Unique text here."}
+    assert drop_repeated(found) == {"d": "Unique text here."}
 
 
 def test_a_description_on_two_pages_is_kept() -> None:
     found = {"a": "Shared by a pair.", "b": "Shared by a pair."}
-    assert drop_repeated(found, authored=set()) == found
+    assert drop_repeated(found) == found
 
 
-def test_authored_descriptions_are_kept_even_when_repeated() -> None:
-    found = {"a": "Chosen by hand.", "b": "Chosen by hand.", "c": "Chosen by hand.", "d": "Chosen by hand."}
-    assert drop_repeated(found, authored={"a", "b", "c"}) == {
-        "a": "Chosen by hand.",
-        "b": "Chosen by hand.",
-        "c": "Chosen by hand.",
-    }
+def test_front_matter_descriptions_are_tidied_too() -> None:
+    meta = {"description": "Download from <b>Percona Downloads</b> .\n If needed ( see docs ) ask."}
+    assert pick_description(meta, "") == "Download from <b>Percona Downloads</b>. If needed (see docs) ask."
