@@ -278,6 +278,39 @@ def test_pages_llmstxt_did_not_write_are_skipped(tmp_path: Path) -> None:
     assert not (Path(config.site_dir) / "gone.md").exists()
 
 
+# --- .html.md copies ---------------------------------------------------------
+
+
+def test_markdown_is_also_served_at_the_html_url_plus_md(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path))
+    for name in ("index", "install", "notes/1.0", "draft"):
+        assert (site / f"{name}.html.md").read_bytes() == (site / f"{name}.md").read_bytes(), name
+    assert read(site / "install.html.md").startswith(directive(SITE_URL + "llms.txt"))
+    index = read(site / "llms.txt")
+    assert ".html.md" not in index  # llms.txt and the alternate link keep the .md files
+    assert ".html.md" not in read(site / "install.html")
+
+
+def test_html_md_with_directory_urls(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    config_file.write_text(read(config_file).replace("use_directory_urls: false", "use_directory_urls: true"))
+    site = run_build(config_file)
+    assert (site / "install" / "index.html.md").read_bytes() == (site / "install" / "index.md").read_bytes()
+    assert (site / "index.html.md").read_bytes() == (site / "index.md").read_bytes()
+
+
+def test_html_md_can_be_turned_off(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path, percona="  - percona-llmstxt:\n      html_md: false\n"))
+    assert (site / "install.md").is_file()
+    assert not list(site.rglob("*.html.md"))
+
+
+def test_html_md_inactive_without_site_url(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    config_file.write_text(read(config_file).replace(f"site_url: {SITE_URL}\n", ""), encoding="utf-8")
+    assert not list(run_build(config_file).rglob("*.html.md"))
+
+
 # --- code block language -----------------------------------------------------
 
 HIGHLIGHT_YML = "  - pymdownx.highlight\n"

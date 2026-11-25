@@ -64,6 +64,9 @@ class PerconaLlmsTxtConfig(Config):  # type: ignore[no-untyped-call]  # MkDocs: 
     hint = opts.Type(bool, default=True)
     """Add the hidden link to llms.txt to every HTML page."""
 
+    html_md = opts.Type(bool, default=True)
+    """Also serve each markdown page at its HTML URL plus ``.md`` (``install.html.md``)."""
+
 
 def base_url(site_url: str, version: str | None) -> str:
     """The URL the links in llms.txt start with, ending in ``/``.
@@ -106,6 +109,15 @@ def qualify_entries(llms_txt: str, md_url_titles: dict[str, str]) -> str:
         return f"- [{escaped}]({match['url']}){match['rest']}"
 
     return "\n".join(rewrite(line) for line in llms_txt.split("\n"))
+
+
+def html_md_name(name: str) -> str:
+    """The ``.html.md`` twin of a markdown page's path: ``a/b.md`` becomes ``a/b.html.md``.
+
+    The llms.txt convention is that a page's markdown lives at its URL with
+    ``.md`` appended, and tools that follow it ask for ``install.html.md``.
+    """
+    return name.removesuffix(".md") + ".html.md"
 
 
 def enable_lang_class(config: MkDocsConfig) -> None:
@@ -206,7 +218,10 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         for name in self.md_pages:
             path = site_dir / name
             if path.is_file():
-                path.write_text(line + path.read_text(encoding="utf-8"), encoding="utf-8")
+                text = line + path.read_text(encoding="utf-8")
+                path.write_text(text, encoding="utf-8")
+                if self.config.html_md:
+                    (site_dir / html_md_name(name)).write_text(text, encoding="utf-8")
         self.retitle(site_dir / "llms.txt", qualify=True)
         if full_output := llmstxt_full_output(config):
             self.retitle(site_dir / full_output, qualify=False)
