@@ -54,3 +54,32 @@ def pages_outside_nav(pages: Iterable[str], sections: Mapping[str, list[str]]) -
     """
     listed = {page for section in sections.values() for page in section}
     return [page for page in pages if page not in listed and page != NOT_FOUND_PAGE]
+
+
+def qualified_titles(nav: list[Any]) -> dict[str, str]:
+    """Map pages nested below a section group to ``"<group>: <nav title>"``.
+
+    Titles such as "Install" or "Overview" repeat across a product, and in
+    llms.txt they sit in a flat list. Every group between the section and the
+    page is put in front of the title. Pages directly in a section, top-level
+    pages, pages without a nav title and external links are left out.
+    A page listed twice keeps its first label.
+    """
+    titles: dict[str, str] = {}
+
+    def walk(items: list[Any], groups: tuple[str, ...]) -> None:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            for title, value in item.items():
+                if isinstance(value, list):
+                    walk(value, (*groups, title))
+                elif isinstance(value, str) and value.endswith(".md") and groups:
+                    titles.setdefault(value, ": ".join((*groups, title)))
+
+    for item in nav:
+        if isinstance(item, dict) and len(item) == 1:
+            value = next(iter(item.values()))
+            if isinstance(value, list):
+                walk(value, ())
+    return titles

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from percona_llmstxt.nav import nav_pages, pages_outside_nav, sections_from_nav
+from percona_llmstxt.nav import nav_pages, pages_outside_nav, qualified_titles, sections_from_nav
 
 
 @pytest.mark.parametrize(
@@ -62,3 +62,32 @@ def test_pages_outside_nav_keep_their_order_and_skip_the_404_page() -> None:
 
 def test_no_pages_outside_nav() -> None:
     assert pages_outside_nav(["index.md"], {"Overview": ["index.md"]}) == []
+
+
+def test_qualified_titles() -> None:
+    nav: list[Any] = [{"Security": [{"Audit Log Filter": [{"Install": "alf-install.md"}]}, {"Overview": "sec.md"}]}]
+    assert qualified_titles(nav) == {"alf-install.md": "Audit Log Filter: Install"}
+
+
+def test_qualified_titles_nest_and_skip_unqualified_entries() -> None:
+    nav: list[Any] = [
+        "top.md",
+        {"Home": "index.md"},
+        {
+            "Security": [
+                "bare.md",
+                {
+                    "Audit Log Filter": [
+                        "bare-nested.md",
+                        {"Install": "alf-install.md"},
+                        {"Link": "https://example.com/"},
+                        {"Formats": [{"Overview": "f.md"}]},
+                    ]
+                },
+            ]
+        },
+    ]
+    assert qualified_titles(nav) == {
+        "alf-install.md": "Audit Log Filter: Install",
+        "f.md": "Audit Log Filter: Formats: Overview",
+    }

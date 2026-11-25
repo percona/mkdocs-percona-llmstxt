@@ -6,7 +6,10 @@ llms-full.txt and the markdown pages, and fills in what Percona's docs need:
 * the sections of llms.txt, from ``nav``, so there is no second list of pages;
 * ``base_url``, from ``site_url`` and the version mike is deploying, so every
   version branch links to its own pages without per-branch settings;
-* a pre-processing step that keeps the labels of content tabs;
+* a pre-processing step that keeps the labels of content tabs and points links
+  between pages at the markdown copies;
+* a warning when ``site_description``, the summary line of llms.txt, says nothing;
+* the language of code blocks (``pygments_lang_class`` on pymdownx.highlight);
 * a link to llms.txt at the top of every markdown page and, hidden, in every
   HTML page;
 * ``data-markdown-ignore`` on the parts of the HTML that are for people only.
@@ -21,8 +24,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 
 from mkdocs.config import config_options as opts
 from mkdocs.config.base import Config
@@ -33,10 +38,12 @@ from mkdocs.structure.files import Files
 from mkdocs.structure.pages import Page
 
 from percona_llmstxt import preprocess
-from percona_llmstxt.html import add_hint, mark_human_only
-from percona_llmstxt.nav import pages_outside_nav, sections_from_nav
+from percona_llmstxt.html import add_alternate, add_hint, mark_human_only
+from percona_llmstxt.nav import pages_outside_nav, qualified_titles, sections_from_nav
 
 LLMSTXT = "llmstxt"
+HIGHLIGHT = "pymdownx.highlight"
+GENERIC_DESCRIPTIONS = frozenset({"", "documentation", "docs"})  # say nothing about the product
 MIKE_VERSION = "MIKE_DOCS_VERSION"  # set by `mike deploy` for the build it runs
 
 log = logging.getLogger(f"mkdocs.plugins.{__name__}")
@@ -75,6 +82,47 @@ def directive(index_url: str) -> str:
     return f"> For the complete documentation index, see [llms.txt]({index_url}).\n\n"
 
 
+def versioned_title(line: str, version: str | None) -> str:
+    """Add the version to the ``# Title`` line of llms.txt, so each version's index is told apart."""
+    if not version or not line.startswith("# ") or line.endswith(version):
+        return line
+    return f"{line} {version}"
+
+
+ENTRY = re.compile(r"^- \[(?P<title>.*?)\]\((?P<url>[^)\s]+)\)(?P<rest>(?::.*)?)$")
+
+
+def qualify_entries(llms_txt: str, md_url_titles: dict[str, str]) -> str:
+    """Give the ``- [Title](url)`` entries whose url is in the map their new title.
+
+    ``[`` and ``]`` in a new title are escaped so they cannot end the link early.
+    """
+
+    def rewrite(line: str) -> str:
+        match = ENTRY.match(line)
+        if match is None or (title := md_url_titles.get(match["url"])) is None:
+            return line
+        escaped = title.replace("[", "\\[").replace("]", "\\]")
+        return f"- [{escaped}]({match['url']}){match['rest']}"
+
+    return "\n".join(rewrite(line) for line in llms_txt.split("\n"))
+
+
+def enable_lang_class(config: MkDocsConfig) -> None:
+    """Make pymdownx.highlight add ``language-<lang>`` to code blocks, unless mkdocs.yml set it.
+
+    Without that class mkdocs-llmstxt cannot tell the language and writes a bare fence.
+    """
+    if HIGHLIGHT in config.markdown_extensions:
+        config.mdx_configs.setdefault(HIGHLIGHT, {}).setdefault("pygments_lang_class", True)
+
+
+def llmstxt_full_output(config: MkDocsConfig) -> str | None:
+    """The ``full_output`` file name set on the llmstxt plugin, if any."""
+    output: str | None = config.plugins[LLMSTXT].config.full_output
+    return output
+
+
 class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no-untyped-call]  # same
     """Fills in the ``llmstxt`` plugin's settings and adds the links to llms.txt."""
 
@@ -82,6 +130,8 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         self.active = False
         self.index_url = ""
         self.md_pages: list[str] = []
+        self.md_urls: dict[str, str] = {}
+        self.llms_titles: dict[str, str] = {}
         self.sections_from_nav = False
 
     @event_priority(50)  # before the llmstxt plugin reads its settings
@@ -98,6 +148,9 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
                 config.site_url = ""  # llmstxt stops the build when site_url is None
             return config
 
+        if (config.site_description or "").strip().lower() in GENERIC_DESCRIPTIONS:
+            log.warning("site_description is the summary line of llms.txt; describe the product in one sentence")
+        enable_lang_class(config)
         self.sections_from_nav = not settings.sections
         if self.sections_from_nav:
             settings.sections = sections_from_nav(config.nav or [], self.config.first_section)
@@ -123,24 +176,48 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
                 sections = {**sections, name: [*sections.get(name, []), *others]}
                 llmstxt.config.sections = sections
         wanted = {page for pages in sections.values() for page in pages}
-        self.md_pages = [
-            Path(file.dest_uri).with_suffix(".md").as_posix()
+        md_files = {
+            file.src_uri: Path(file.dest_uri).with_suffix(".md").as_posix()
             for file in files.documentation_pages()
             if file.src_uri in wanted
-        ]
+        }
+        self.md_pages = list(md_files.values())
+        self.md_urls = {src: urljoin(llmstxt.config.base_url, dest) for src, dest in md_files.items()}
+        labels = qualified_titles(config.nav or [])
+        self.llms_titles = {self.md_urls[src]: label for src, label in labels.items() if src in self.md_urls}
+        preprocess.configure(config.site_dir, frozenset(self.md_pages))
         return files
 
     def on_post_page(self, output: str, *, page: Page, config: MkDocsConfig) -> str:
         if not self.active:
             return output
         output = mark_human_only(output)
-        return add_hint(output, self.index_url) if self.config.hint else output
+        md_url = self.md_urls.get(page.file.src_uri)
+        if md_url:
+            output = add_alternate(output, md_url)
+        return add_hint(output, self.index_url, md_url) if self.config.hint else output
 
     @event_priority(-100)  # after llmstxt has written the markdown pages
     def on_post_build(self, *, config: MkDocsConfig) -> None:
+        if not self.active:
+            return
         line = directive(self.index_url)
         site_dir = Path(config.site_dir)
         for name in self.md_pages:
             path = site_dir / name
             if path.is_file():
                 path.write_text(line + path.read_text(encoding="utf-8"), encoding="utf-8")
+        self.retitle(site_dir / "llms.txt", qualify=True)
+        if full_output := llmstxt_full_output(config):
+            self.retitle(site_dir / full_output, qualify=False)
+
+    def retitle(self, path: Path, *, qualify: bool) -> None:
+        """Put the version in the first line of an llms file and, for llms.txt, qualify the labels."""
+        if not path.is_file():
+            return
+        text = path.read_text(encoding="utf-8")
+        first, newline, rest = text.partition("\n")
+        text = versioned_title(first, os.environ.get(MIKE_VERSION)) + newline + rest
+        if qualify:
+            text = qualify_entries(text, self.llms_titles)
+        path.write_text(text, encoding="utf-8")
