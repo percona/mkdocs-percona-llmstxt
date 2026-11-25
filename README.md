@@ -58,6 +58,9 @@ On the `llmstxt` plugin, unless `mkdocs.yml` already sets it:
 - **Links.** A link from one page to another in the site is rewritten to the markdown copy, with its `#anchor` kept. Links to pages without a markdown copy are left alone.
 - **Images.** The images are removed from the markdown copy, as before, but their alt text stays as `Image: <alt text>`; images with no alt text are dropped.
 - **Version and labels.** During `mike deploy`, the version is added to the `llms.txt` title and to the first line of `llms-full.txt`. In `llms.txt`, a page nested in one or more groups below its section is labelled with those groups, joined by ": ", such as "Audit Log Filter: Install". Pages directly in a section, top-level pages and nav entries without a title keep their own title.
+- **`.html.md` copies.** Each markdown page is also written at its HTML URL plus `.md` (`install.html.md` next to `install.md`, `foo/index.html.md` with directory URLs), with the same content. llms.txt and the alternate link keep pointing to the `.md` files. `html_md: false` turns it off.
+- **Descriptions.** Each entry of `llms.txt` gets `: <description>` unless it has one: the `description` in the page's front matter, or else the first sentence of the first paragraph that is directly in the page (not in an admonition, tab, table or list), cut at 200 characters with `…`. On a site that fills `description` with a plugin (such as meta-descriptions), that text is used, capped but not cut to one sentence. Space before punctuation left by inline links is tidied and HTML escapes in front matter are decoded. Descriptions under 15 characters, and any description shared by 3 or more pages (front matter included), are left out. `descriptions: false` turns it off.
+- **Optional section.** With sections taken from `nav`, the sections named in `optional_sections` (default `Release notes`, matched ignoring case; only top-level nav sections, not nested groups) are moved into the last section (`other_pages`, "Optional"), in nav order and ahead of the pages outside nav, and the labels of those that have a nav title start with the section name ("Release notes: Release notes index"). A nav group with the same name as `other_pages` also moves to the end. With `other_pages: ''` or `sections` set by hand, nothing moves.
 - **Alternate link.** Each HTML page has `<link rel="alternate" type="text/markdown" href="...">` in its `<head>`, and its hidden hint names the markdown URL.
 
 ## Empty summary
@@ -75,6 +78,9 @@ WARNING - site_description is the summary line of llms.txt; describe the product
     first_section: Overview  # section for top-level pages outside a nav group
     other_pages: Optional    # section for pages outside nav; '' leaves them out
     hint: true               # the hidden link to llms.txt in every HTML page
+    html_md: true            # also write each markdown page as <page>.html.md
+    descriptions: true       # add a one-line description to each llms.txt entry
+    optional_sections: [Release notes]  # nav sections moved under the other_pages section; [] keeps them
 ```
 
 ## Check a site
@@ -98,7 +104,7 @@ ruff check . && ruff format --check . && mypy && pytest
 ## Release
 
 1. Set the new `version` in `pyproject.toml` and merge it to `main`.
-2. Tag that commit and push the tag: `git tag -a v0.4.0 -m v0.4.0 && git push origin v0.4.0`.
+2. Tag that commit and push the tag: `git tag -a v0.4.1 -m v0.4.1 && git push origin v0.4.1`.
 
 The Release workflow builds the package, checks that the tag matches the version, publishes it to TestPyPI and then, once a maintainer approves the `pypi` environment, to PyPI. Both use [trusted publishing](https://docs.pypi.org/trusted-publishers/), so the repo stores no PyPI tokens. Running the workflow by hand publishes to TestPyPI only.
 

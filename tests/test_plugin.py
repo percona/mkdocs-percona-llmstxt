@@ -9,6 +9,8 @@ from mkdocs.commands.build import build
 from mkdocs.config import load_config
 from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.exceptions import PluginError
+from mkdocs.structure.files import File, Files
+from mkdocs.structure.pages import Page
 
 from percona_llmstxt.plugin import (
     MIKE_VERSION,
@@ -128,8 +130,11 @@ def test_build_without_settings(tmp_path: Path) -> None:
     index = read(site / "llms.txt")
     assert "## Overview\n\n- [Home](https://docs.example.com/product/index.md)" in index
     assert "## Guide\n\n- [Install](https://docs.example.com/product/install.md)" in index
-    assert "## Release notes\n\n- [Release 1.0](https://docs.example.com/product/notes/1.0.md)" in index
-    assert index.rstrip().endswith("## Optional\n\n- [Draft](https://docs.example.com/product/draft.md)")
+    assert "## Release notes" not in index
+    assert index.rstrip().endswith(
+        "## Optional\n\n- [Release 1.0](https://docs.example.com/product/notes/1.0.md)"
+        "\n- [Draft](https://docs.example.com/product/draft.md)"
+    )
     assert "Archive" not in index
 
     for page in ("index.md", "install.md", "notes/1.0.md", "draft.md"):
@@ -183,7 +188,7 @@ def test_pages_outside_nav_can_be_left_out(tmp_path: Path) -> None:
 
 
 def test_no_optional_section_when_every_page_is_in_nav(tmp_path: Path) -> None:
-    config_file = make_site(tmp_path)
+    config_file = make_site(tmp_path, percona="  - percona-llmstxt:\n      optional_sections: []\n")
     (tmp_path / "docs" / "draft.md").unlink()
     assert "## Optional" not in read(run_build(config_file) / "llms.txt")
 
@@ -197,7 +202,9 @@ def test_a_nav_group_with_the_same_name_keeps_its_pages(tmp_path: Path) -> None:
 
 def test_other_pages_section_name(tmp_path: Path) -> None:
     site = run_build(make_site(tmp_path, percona="  - percona-llmstxt:\n      other_pages: More pages\n"))
-    assert "## More pages\n\n- [Draft]" in read(site / "llms.txt")
+    assert "## More pages\n\n- [Release 1.0](https://docs.example.com/product/notes/1.0.md)\n- [Draft]" in read(
+        site / "llms.txt"
+    )
 
 
 def test_first_section_name(tmp_path: Path) -> None:
@@ -276,6 +283,160 @@ def test_pages_llmstxt_did_not_write_are_skipped(tmp_path: Path) -> None:
     plugin.md_pages.append("gone.md")
     plugin.on_post_build(config=config)
     assert not (Path(config.site_dir) / "gone.md").exists()
+
+
+# --- .html.md copies ---------------------------------------------------------
+
+
+def test_markdown_is_also_served_at_the_html_url_plus_md(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path))
+    for name in ("index", "install", "notes/1.0", "draft"):
+        assert (site / f"{name}.html.md").read_bytes() == (site / f"{name}.md").read_bytes(), name
+    assert read(site / "install.html.md").startswith(directive(SITE_URL + "llms.txt"))
+    index = read(site / "llms.txt")
+    assert ".html.md" not in index  # llms.txt and the alternate link keep the .md files
+    assert ".html.md" not in read(site / "install.html")
+
+
+def test_html_md_with_directory_urls(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    config_file.write_text(read(config_file).replace("use_directory_urls: false", "use_directory_urls: true"))
+    site = run_build(config_file)
+    assert (site / "install" / "index.html.md").read_bytes() == (site / "install" / "index.md").read_bytes()
+    assert (site / "index.html.md").read_bytes() == (site / "index.md").read_bytes()
+
+
+def test_html_md_can_be_turned_off(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path, percona="  - percona-llmstxt:\n      html_md: false\n"))
+    assert (site / "install.md").is_file()
+    assert not list(site.rglob("*.html.md"))
+
+
+def test_html_md_inactive_without_site_url(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    config_file.write_text(read(config_file).replace(f"site_url: {SITE_URL}\n", ""), encoding="utf-8")
+    assert not list(run_build(config_file).rglob("*.html.md"))
+
+
+# --- optional sections -------------------------------------------------------
+
+
+def test_release_notes_move_under_optional(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path))
+    index = read(site / "llms.txt")
+    sections = [line for line in index.splitlines() if line.startswith("## ")]
+    assert sections == ["## Overview", "## Guide", "## Optional"]
+    assert (site / "notes" / "1.0.md").is_file()  # still has its markdown copy
+    assert (site / "notes" / "1.0.html.md").is_file()
+
+
+def test_optional_sections_are_matched_ignoring_case(tmp_path: Path) -> None:
+    percona = "  - percona-llmstxt:\n      optional_sections: [GUIDE]\n"
+    index = read(run_build(make_site(tmp_path, percona=percona)) / "llms.txt")
+    assert "## Guide" not in index
+    assert "## Release notes\n\n- [Release 1.0]" in index
+    assert index.rstrip().endswith(
+        "- [Guide: Install](https://docs.example.com/product/install.md)\n- [Draft](https://docs.example.com/product/draft.md)"
+    )
+
+
+def test_no_optional_sections_keeps_the_old_layout(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path, percona="  - percona-llmstxt:\n      optional_sections: []\n"))
+    index = read(site / "llms.txt")
+    assert "## Release notes\n\n- [Release 1.0](https://docs.example.com/product/notes/1.0.md)" in index
+    assert index.rstrip().endswith("## Optional\n\n- [Draft](https://docs.example.com/product/draft.md)")
+
+
+def test_explicit_sections_are_not_reordered(tmp_path: Path) -> None:
+    llmstxt = (
+        "  - llmstxt:\n      sections:\n        Release notes:\n          - notes/1.0.md\n"
+        "        Guide:\n          - install.md\n"
+    )
+    index = read(run_build(make_site(tmp_path, llmstxt=llmstxt)) / "llms.txt")
+    assert index.index("## Release notes") < index.index("## Guide")
+    assert "## Optional" not in index
+
+
+def test_nothing_moves_without_an_other_pages_section(tmp_path: Path) -> None:
+    site = run_build(make_site(tmp_path, percona="  - percona-llmstxt:\n      other_pages: ''\n"))
+    index = read(site / "llms.txt")
+    assert "## Release notes\n\n- [Release 1.0]" in index
+    assert "## Optional" not in index
+
+
+def test_moved_pages_keep_their_section_name_in_the_label(tmp_path: Path) -> None:
+    config_file = nested_site(tmp_path)
+    text = read(config_file).replace("  - Guide:", "  - Release notes:").replace("Audit Log Filter", "Series 1")
+    config_file.write_text(text.replace("      - Notes: notes/1.0.md", "      - 1.0: notes/1.0.md"), encoding="utf-8")
+    index = read(run_build(config_file) / "llms.txt")
+    assert "- [Release notes: Series 1: Install](https://docs.example.com/product/install.md)" in index
+    assert "- [Release notes: 1.0](https://docs.example.com/product/notes/1.0.md)" in index
+
+
+# --- descriptions -----------------------------------------------------------
+
+
+def test_llms_txt_entries_get_a_description(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    (tmp_path / "docs" / "install.md").write_text(
+        "# Install\n\nInstall the package with apt. Then start it.\n\n!!! note\n\n    Skip me, please.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "index.md").write_text(
+        "---\ndescription: From front matter.\n---\n# Home\n\nIgnored paragraph here.\n", encoding="utf-8"
+    )
+    index = read(run_build(config_file) / "llms.txt")
+    assert "- [Install](https://docs.example.com/product/install.md): Install the package with apt.\n" in index
+    assert "- [Home](https://docs.example.com/product/index.md): From front matter.\n" in index
+    assert "- [Release 1.0](https://docs.example.com/product/notes/1.0.md): First.\n" not in index  # too short
+
+
+def test_repeated_first_paragraphs_are_not_descriptions(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    docs = tmp_path / "docs"
+    boiler = "# T\n\nGet started with the quickstart guide.\n"
+    for name in ("index.md", "install.md", "notes/1.0.md"):
+        (docs / name).write_text(boiler, encoding="utf-8")
+    (docs / "draft.md").write_text("# Draft\n\nA paragraph that is shared.\n", encoding="utf-8")
+    index = read(run_build(config_file) / "llms.txt")
+    assert "quickstart" not in index
+    assert "draft.md): A paragraph that is shared." in index
+
+
+def test_repeated_front_matter_descriptions_are_dropped_too(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    docs = tmp_path / "docs"
+    for name in ("index.md", "install.md", "notes/1.0.md"):
+        (docs / name).write_text("---\ndescription: Same for all pages .\n---\n# T\n", encoding="utf-8")
+    (docs / "draft.md").write_text("---\ndescription: Only for the draft .\n---\n# T\n", encoding="utf-8")
+    index = read(run_build(config_file) / "llms.txt")
+    assert "Same for all" not in index
+    assert "draft.md): Only for the draft." in index
+
+
+def test_descriptions_can_be_turned_off(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path, percona="  - percona-llmstxt:\n      descriptions: false\n")
+    (tmp_path / "docs" / "install.md").write_text("# Install\n\nInstall the package with apt.\n", encoding="utf-8")
+    index = read(run_build(config_file) / "llms.txt")
+    assert "install.md)\n" in index
+    assert "Install the package" not in index
+
+
+def test_descriptions_inactive_without_site_url(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    config_file.write_text(read(config_file).replace(f"site_url: {SITE_URL}\n", ""), encoding="utf-8")
+    assert "Welcome" not in read(run_build(config_file) / "llms.txt")
+
+
+def test_pages_without_a_markdown_copy_get_no_description(tmp_path: Path) -> None:
+    config: MkDocsConfig = load_config(str(make_site(tmp_path)))
+    build(config)
+    plugin = config.plugins["percona-llmstxt"]
+    assert isinstance(plugin, PerconaLlmsTxtPlugin)
+    plugin.descriptions.clear()
+    page = Page(None, File("other.md", config.docs_dir, config.site_dir, False), config)
+    assert plugin.on_page_content("<p>A long enough paragraph.</p>", page=page, config=config, files=Files([])) is None
+    assert plugin.descriptions == {}
 
 
 # --- code block language -----------------------------------------------------
@@ -380,6 +541,22 @@ def test_built_markdown_keeps_image_alt(tmp_path: Path) -> None:
 )
 def test_versioned_title(line: str, version: str | None, expected: str) -> None:
     assert versioned_title(line, version) == expected
+
+
+def test_qualify_entries_adds_descriptions_only_where_missing() -> None:
+    text = (
+        "## S\n\n- [A](https://d/a.md)\n- [B](https://d/b.md): Own\n- [C](https://d/c.md)\n- [D](https://d/d.md)\n"
+        "plain [A](https://d/a.md)\n"
+    )
+    out = qualify_entries(
+        text,
+        {"https://d/a.md": "G: A"},
+        {"https://d/a.md": "About a.", "https://d/b.md": "Ignored.", "https://d/c.md": "About c."},
+    )
+    assert out == (
+        "## S\n\n- [G: A](https://d/a.md): About a.\n- [B](https://d/b.md): Own\n- [C](https://d/c.md): About c.\n"
+        "- [D](https://d/d.md)\nplain [A](https://d/a.md)\n"
+    )
 
 
 def test_qualify_entries() -> None:
