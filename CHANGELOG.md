@@ -7,7 +7,7 @@
   - A description shared by 3 or more pages is dropped, front matter included, because it says nothing about any one page.
   - Spacing before punctuation left by inline links is tidied, and HTML escapes (`&lt;`) in front matter are decoded.
   - On a site that fills `description` with the meta-descriptions plugin, that plugin's text is used (capped at 200 characters, not cut to one sentence).
-- Release notes now move into the last `## Optional` section of `llms.txt`, ahead of the pages that are outside the nav, and their labels start with the section name ("Release notes: 8.4.11-12"). Set `optional_sections` to choose which sections move (matched ignoring case; `[]` keeps them where they are). Only top-level nav sections move, not nested groups. This needs `other_pages` to name a section, and does not apply when `sections` is set by hand. A nav group with the same name as `other_pages` (by default "Optional") now also moves to the end.
+- Release notes now move into the last `## Optional` section of `llms.txt`, ahead of the pages that are outside the nav, and the labels of those that have a nav title start with the section name ("Release notes: Release notes index"). Set `optional_sections` to choose which sections move (matched ignoring case; `[]` keeps them where they are). Only top-level nav sections move, not nested groups. This needs `other_pages` to name a section, and does not apply when `sections` is set by hand. A nav group with the same name as `other_pages` (by default "Optional") now also moves to the end.
 - All three changes are on by default. To get the 0.4.0 output back, set `html_md: false`, `descriptions: false` and `optional_sections: []` under `percona-llmstxt:`.
 
 ## 0.4.0 - 2026-11-25
