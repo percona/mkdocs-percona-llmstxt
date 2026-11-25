@@ -38,6 +38,7 @@ from mkdocs.structure.files import Files
 from mkdocs.structure.pages import Page
 
 from percona_llmstxt import preprocess
+from percona_llmstxt.descriptions import pick_description
 from percona_llmstxt.html import add_alternate, add_hint, mark_human_only
 from percona_llmstxt.nav import pages_outside_nav, qualified_titles, sections_from_nav
 
@@ -63,6 +64,9 @@ class PerconaLlmsTxtConfig(Config):  # type: ignore[no-untyped-call]  # MkDocs: 
 
     hint = opts.Type(bool, default=True)
     """Add the hidden link to llms.txt to every HTML page."""
+
+    descriptions = opts.Type(bool, default=True)
+    """Add a one-line description to each llms.txt entry that has none."""
 
     html_md = opts.Type(bool, default=True)
     """Also serve each markdown page at its HTML URL plus ``.md`` (``install.html.md``)."""
@@ -95,18 +99,27 @@ def versioned_title(line: str, version: str | None) -> str:
 ENTRY = re.compile(r"^- \[(?P<title>.*?)\]\((?P<url>[^)\s]+)\)(?P<rest>(?::.*)?)$")
 
 
-def qualify_entries(llms_txt: str, md_url_titles: dict[str, str]) -> str:
+def qualify_entries(llms_txt: str, md_url_titles: dict[str, str], descriptions: dict[str, str] | None = None) -> str:
     """Give the ``- [Title](url)`` entries whose url is in the map their new title.
 
     ``[`` and ``]`` in a new title are escaped so they cannot end the link early.
+    An entry that has no ``: description`` yet gets the one mapped to its url;
+    one that has a description keeps it. Other lines are returned unchanged.
     """
+    descriptions = descriptions or {}
 
     def rewrite(line: str) -> str:
         match = ENTRY.match(line)
-        if match is None or (title := md_url_titles.get(match["url"])) is None:
+        if match is None:
             return line
-        escaped = title.replace("[", "\\[").replace("]", "\\]")
-        return f"- [{escaped}]({match['url']}){match['rest']}"
+        url = match["url"]
+        title = md_url_titles.get(url)
+        description = descriptions.get(url)
+        if title is None and not (description and not match["rest"]):
+            return line
+        label = match["title"] if title is None else title.replace("[", "\\[").replace("]", "\\]")
+        rest = match["rest"] or (f": {description}" if description else "")
+        return f"- [{label}]({url}){rest}"
 
     return "\n".join(rewrite(line) for line in llms_txt.split("\n"))
 
@@ -144,6 +157,7 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         self.md_pages: list[str] = []
         self.md_urls: dict[str, str] = {}
         self.llms_titles: dict[str, str] = {}
+        self.descriptions: dict[str, str] = {}
         self.sections_from_nav = False
 
     @event_priority(50)  # before the llmstxt plugin reads its settings
@@ -200,6 +214,13 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         preprocess.configure(config.site_dir, frozenset(self.md_pages))
         return files
 
+    def on_page_content(self, html: str, /, *, page: Page, config: MkDocsConfig, files: Files) -> str | None:
+        """Remember a description of each page that has a markdown copy, for its llms.txt entry."""
+        md_url = self.md_urls.get(page.file.src_uri)
+        if self.active and self.config.descriptions and md_url and (description := pick_description(page.meta, html)):
+            self.descriptions[md_url] = description
+        return None
+
     def on_post_page(self, output: str, *, page: Page, config: MkDocsConfig) -> str:
         if not self.active:
             return output
@@ -234,5 +255,5 @@ class PerconaLlmsTxtPlugin(BasePlugin[PerconaLlmsTxtConfig]):  # type: ignore[no
         first, newline, rest = text.partition("\n")
         text = versioned_title(first, os.environ.get(MIKE_VERSION)) + newline + rest
         if qualify:
-            text = qualify_entries(text, self.llms_titles)
+            text = qualify_entries(text, self.llms_titles, self.descriptions)
         path.write_text(text, encoding="utf-8")

@@ -9,6 +9,8 @@ from mkdocs.commands.build import build
 from mkdocs.config import load_config
 from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.exceptions import PluginError
+from mkdocs.structure.files import File, Files
+from mkdocs.structure.pages import Page
 
 from percona_llmstxt.plugin import (
     MIKE_VERSION,
@@ -311,6 +313,49 @@ def test_html_md_inactive_without_site_url(tmp_path: Path) -> None:
     assert not list(run_build(config_file).rglob("*.html.md"))
 
 
+# --- descriptions -----------------------------------------------------------
+
+
+def test_llms_txt_entries_get_a_description(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    (tmp_path / "docs" / "install.md").write_text(
+        "# Install\n\nInstall the package with apt. Then start it.\n\n!!! note\n\n    Skip me, please.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "index.md").write_text(
+        "---\ndescription: From front matter.\n---\n# Home\n\nIgnored paragraph here.\n", encoding="utf-8"
+    )
+    index = read(run_build(config_file) / "llms.txt")
+    assert "- [Install](https://docs.example.com/product/install.md): Install the package with apt.\n" in index
+    assert "- [Home](https://docs.example.com/product/index.md): From front matter.\n" in index
+    assert "- [Release 1.0](https://docs.example.com/product/notes/1.0.md): First.\n" not in index  # too short
+
+
+def test_descriptions_can_be_turned_off(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path, percona="  - percona-llmstxt:\n      descriptions: false\n")
+    (tmp_path / "docs" / "install.md").write_text("# Install\n\nInstall the package with apt.\n", encoding="utf-8")
+    index = read(run_build(config_file) / "llms.txt")
+    assert "install.md)\n" in index
+    assert "Install the package" not in index
+
+
+def test_descriptions_inactive_without_site_url(tmp_path: Path) -> None:
+    config_file = make_site(tmp_path)
+    config_file.write_text(read(config_file).replace(f"site_url: {SITE_URL}\n", ""), encoding="utf-8")
+    assert "Welcome" not in read(run_build(config_file) / "llms.txt")
+
+
+def test_pages_without_a_markdown_copy_get_no_description(tmp_path: Path) -> None:
+    config: MkDocsConfig = load_config(str(make_site(tmp_path)))
+    build(config)
+    plugin = config.plugins["percona-llmstxt"]
+    assert isinstance(plugin, PerconaLlmsTxtPlugin)
+    plugin.descriptions.clear()
+    page = Page(None, File("other.md", config.docs_dir, config.site_dir, False), config)
+    assert plugin.on_page_content("<p>A long enough paragraph.</p>", page=page, config=config, files=Files([])) is None
+    assert plugin.descriptions == {}
+
+
 # --- code block language -----------------------------------------------------
 
 HIGHLIGHT_YML = "  - pymdownx.highlight\n"
@@ -413,6 +458,22 @@ def test_built_markdown_keeps_image_alt(tmp_path: Path) -> None:
 )
 def test_versioned_title(line: str, version: str | None, expected: str) -> None:
     assert versioned_title(line, version) == expected
+
+
+def test_qualify_entries_adds_descriptions_only_where_missing() -> None:
+    text = (
+        "## S\n\n- [A](https://d/a.md)\n- [B](https://d/b.md): Own\n- [C](https://d/c.md)\n- [D](https://d/d.md)\n"
+        "plain [A](https://d/a.md)\n"
+    )
+    out = qualify_entries(
+        text,
+        {"https://d/a.md": "G: A"},
+        {"https://d/a.md": "About a.", "https://d/b.md": "Ignored.", "https://d/c.md": "About c."},
+    )
+    assert out == (
+        "## S\n\n- [G: A](https://d/a.md): About a.\n- [B](https://d/b.md): Own\n- [C](https://d/c.md): About c.\n"
+        "- [D](https://d/d.md)\nplain [A](https://d/a.md)\n"
+    )
 
 
 def test_qualify_entries() -> None:
